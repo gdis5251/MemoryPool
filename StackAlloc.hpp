@@ -70,6 +70,7 @@ public:
 
             _allocator.deallocate(cur, 1);
             cur = tmp;
+        std::cout << 'a' << std::endl;
         }
 
         _head = nullptr;

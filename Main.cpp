@@ -59,7 +59,8 @@ int main(void)
     start = clock();
     for (int i = 0; i < reps; i++)
     {
-        assert(sm.empty());
+        //assert(sm.empty());
+        //std::cout << i << std::endl;
 
         for (int j = 0; j < elems; j++)
         {

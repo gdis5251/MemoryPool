@@ -2,6 +2,8 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <memory.h>
+#include <iostream>
 
 template <class T, size_t BlockSize = 4096>
 class MemoryPool
@@ -15,9 +17,6 @@ public:
     typedef const T&        const_reference;
     typedef size_t          size_type;
     typedef ptrdiff_t       difference_type;
-    typedef std::false_type propagate_on_container_copy_assignment;
-    typedef std::true_type  propagate_on_container_move_assignment;
-    typedef std::true_type  propagate_on_container_swap;           
 
     template <typename U> 
     struct rebind
@@ -25,91 +24,94 @@ public:
         typedef MemoryPool<U> other;
     };
 
-    //Member function
-    MemoryPool()
+    inline MemoryPool() noexcept 
     {
-        _currentBlock = nullptr;
-        _currentSlot = nullptr;
-        _lastSlot = nullptr;
-        _freeSlots = nullptr;
+        MemoryBlock* m = new MemoryBlock;
+        m->_head = nullptr;
+        m->_next = nullptr;
+        _memory_block = m;
+
+        _free_node = nullptr;
     }
 
-    ~MemoryPool()
+    inline virtual ~MemoryPool() noexcept
     {
-        _slot_pointer cur = _currentBlock;
-        while (cur != nullptr)
+        if (_memory_block->_head != nullptr)
         {
-            _slot_pointer next = cur->next;
-            operator delete(reinterpret_cast<void*>(cur));
-            cur = next;
+            MemoryBlock* next = _memory_block->_head->_next;
+            operator delete(reinterpret_cast<void*>(_memory_block->_head));
+
+            _memory_block->_head = next;
         }
     }
 
-    pointer allocate(size_t n = 1, const_pointer hint = 0)
+    void* CreateBlock()
     {
-        if (_freeSlots != nullptr)
+        char* newBlock = reinterpret_cast<char*>(operator new(BlockSize));
+        //让内存块连起来
+        if (_memory_block->_head == nullptr)
         {
-            pointer result = reinterpret_cast<pointer>(_freeSlots);
-            _freeSlots = _freeSlots->next;
-            return result;
+            _memory_block->_head = reinterpret_cast<MemoryBlock*>(newBlock);
+            _memory_block->_next = nullptr;
         }
         else
         {
-            if (_currentSlot >= _lastSlot)
-                allocateBlock();
-            return reinterpret_cast<pointer>(_currentSlot++);
+            reinterpret_cast<MemoryBlock*>(newBlock)->_next = _memory_block->_head;
+            _memory_block->_head = reinterpret_cast<MemoryBlock*>(newBlock);
+        }
+
+        //让空闲结点指向可用内存块
+        _free_node = reinterpret_cast<FreeNode*>(newBlock + sizeof(MemoryBlock));
+        char* cur = reinterpret_cast<char*>(_free_node);
+        FreeNode* prev = _free_node;
+
+        //让剩下的可用空间全部作为FreeNode结点并连起来
+        for (int i = 2; BlockSize - sizeof(MemoryBlock) - (sizeof(FreeNode) * i) > sizeof(FreeNode); i++)
+        {
+            cur = cur + sizeof(FreeNode);
+            prev->_next = reinterpret_cast<FreeNode*>(cur);
+            prev = reinterpret_cast<FreeNode*>(cur);
         }
     }
 
-    void deallocate(pointer p, size_type n = 1)
+    T* allocate(size_type n = 1)
+    {
+        if (_free_node == nullptr) //如果没有空闲结点了，就在申请一个内存块
+        {
+            CreateBlock();
+        }
+        T* res = reinterpret_cast<T*>(_free_node);
+        _free_node = _free_node->_next;
+        
+        return res;
+    }
+
+    void deallocate(T* p, size_type n = 1)
     {
         if (p != nullptr)
         {
-            reinterpret_cast<_slot_pointer>(p)->next = _freeSlots;
-            _freeSlots = reinterpret_cast<_slot_pointer>(p);
+            reinterpret_cast<FreeNode*>(p)->_next = _free_node;
+            _free_node = reinterpret_cast<FreeNode*>(p);
         }
     }
 
 
 private:
-    union _Slot
+    struct FreeNode
     {
-        value_type element;
-        _Slot* next;
+        T _data;
+        FreeNode* _next;
     };
 
-    typedef char* _data_pointer;
-    typedef _Slot _slot_type;
-    typedef _Slot* _slot_pointer;
-
-    _slot_pointer _currentBlock;
-    _slot_pointer _currentSlot;
-    _slot_pointer _lastSlot;
-    _slot_pointer _freeSlots;
-
-    void allocateBlock()
+    struct MemoryBlock
     {
-        //先开好一片区域
-        _data_pointer newBlock = reinterpret_cast<_data_pointer>(operator new(BlockSize));
-        
-        //然后把这个新开的空间跟旧空间连在一起
-        reinterpret_cast<_slot_pointer>(newBlock)->next = _currentBlock;
-        _currentBlock = reinterpret_cast<_slot_pointer>(newBlock);
+        MemoryBlock* _head;
+        MemoryBlock* _next;
+    };
 
-        //让内存对齐
-        _data_pointer body = newBlock + sizeof(_slot_pointer);
-        size_type bodyPadding = padPointer(body, alignof(_slot_type));
-        _currentSlot = reinterpret_cast<_slot_pointer>(body + bodyPadding);
-        _lastSlot = reinterpret_cast<_slot_pointer>
-            (newBlock + BlockSize - sizeof(_slot_type) + 1);
-    }
+    typedef struct FreeNode FreeNode;
+    typedef struct MemoryBlock MemoryBlock;
 
-    size_type padPointer(_data_pointer p, size_type align) const noexcept
-    {
-        uintptr_t result = reinterpret_cast<uintptr_t>(p);
-        return ((align - result) % align);
-                            
-    }
-
-    static_assert(BlockSize >= 2 * sizeof(_slot_type), "BlockSize too small.");
+    FreeNode *_free_node;
+    MemoryBlock *_memory_block;
 };
