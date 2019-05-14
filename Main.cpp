@@ -1,78 +1,24 @@
-#include <iostream>
-#include <cassert>  //assert()
-#include <ctime>  //clock()
-#include <vector> //vector<T>
-#include <list>  //list<T>
-#include <stack> //stack<T>
-#include "StackAlloc.hpp"
 #include "MemoryPool.hpp"
+#include <ctime>
 
-const int elems = 1000000;
-const int reps = 100;
-
-int main(void)
+int main()
 {
-    clock_t start;
-
-    ////Test list
-    //std::list<int, std::allocator<int> > l;
-    //start = clock();
-    //for (int i = 0; i < reps; i++)
-    //{
-    //    assert(l.empty());
-
-    //    for (int j = 0; j < elems; j++)
-    //    {
-    //        l.push_back(j);
-    //    }
-
-    //    for (int j = 0; j < elems; j++)
-    //    {
-    //        l.pop_back();
-    //    }
-    //}
-    //std::cout << "Defualt allocator time is : ";
-    //std::cout << ((double)clock() - start) / CLOCKS_PER_SEC << std::endl;
-
-    //Test StackAlloc
-    StackAlloc<int, std::allocator<int> > sa;
-    start = clock();
-    for (int i = 0; i < reps; i++)
+    //MemoryPool<int> a;
+    //int *p = a.New();
+    //*p = 1;
+    //a.Delete(p);
+    
+    int start = clock();
+    MemoryPool<int> a;
+    for (int i = 0; i < 1000; i++)
     {
-        assert(sa.empty());
-
-        for (int j = 0; j < elems; j++)
-        {
-            sa.push(j);
-        }
-
-        for (int j = 0; j < elems; j++)
-        {
-            sa.pop();
-        }
+        int *p = a.New();
+        *p = i;
     }
-    std::cout << "Use Default allocator time is : ";
-    std::cout << ((double)clock() - start) / CLOCKS_PER_SEC << std::endl;
+    int end = clock();
+    std::cout << "use time : " << (end - start) / CLOCKS_PER_SEC << std::endl;
 
-    //Test StackAlloc MemoryPool
-    StackAlloc<int, MemoryPool<int> > sm;
-    start = clock();
-    for (int i = 0; i < reps; i++)
-    {
-        //assert(sm.empty());
-        //std::cout << i << std::endl;
 
-        for (int j = 0; j < elems; j++)
-        {
-            sm.push(j);
-        }
-
-        for (int j = 0; j < elems; j++)
-        {
-            sm.pop();
-        }
-    }
-    std::cout << "Use MemoryPool time is : ";
-    std::cout << ((double)clock() - start) / CLOCKS_PER_SEC << std::endl;
     return 0;
 }
+

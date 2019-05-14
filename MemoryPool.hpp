@@ -1,117 +1,109 @@
 #pragma once
-#include <climits>
-#include <cstddef>
-#include <cstdint>
-#include <memory.h>
 #include <iostream>
 
-template <class T, size_t BlockSize = 4096>
+template <class T>
 class MemoryPool
 {
-public:
-    //Member Types  与标准库里的allocator保持一致
-    typedef T               value_type;
-    typedef T*              pointer;
-    typedef T&              reference;
-    typedef const T*        const_pointer;
-    typedef const T&        const_reference;
-    typedef size_t          size_type;
-    typedef ptrdiff_t       difference_type;
-
-    template <typename U> 
-    struct rebind
+private:
+    struct Block
     {
-        typedef MemoryPool<U> other;
+        char* _block;
+        Block* _next;
+
+        explicit Block(size_t init_num = 32)
+            :_next(nullptr)
+        {
+            _block = (char*)malloc(sizeof(Obj) * init_num);
+        }
+
+        ~Block()
+        {
+            free(_block);
+            _block = nullptr;
+        }
     };
 
-    inline MemoryPool() noexcept 
+public:
+    MemoryPool(size_t init_num = 32)
     {
-        MemoryBlock* m = new MemoryBlock;
-        m->_head = nullptr;
-        m->_next = nullptr;
-        _memory_block = m;
-
-        _free_node = nullptr;
+        _current_mem = (char*)new Block(init_num);
+        _head = _tail = (Block*)_current_mem;
     }
 
-    inline virtual ~MemoryPool() noexcept
+    ~MemoryPool()
     {
-        if (_memory_block->_head != nullptr)
-        {
-            MemoryBlock* next = _memory_block->_head->_next;
-            operator delete(reinterpret_cast<void*>(_memory_block->_head));
+        Destory();
+        std::cout << "~MemoryPool" << std::endl;
+    }
 
-            _memory_block->_head = next;
+    T* New()
+    {
+        if (_free_list != nullptr)
+        {
+            T* ret = (T*)_free_list;
+            _free_list = _free_list->_next;
+            _obj_left--;
+            return ret;
         }
-    }
-
-    void* CreateBlock()
-    {
-        char* newBlock = reinterpret_cast<char*>(operator new(BlockSize));
-        //让内存块连起来
-        if (_memory_block->_head == nullptr)
+        else if(_current_mem != nullptr && _obj_left > 0)
         {
-            _memory_block->_head = reinterpret_cast<MemoryBlock*>(newBlock);
-            _memory_block->_next = nullptr;
+            T* ret = (T*)_current_mem;
+            _current_mem += sizeof(Obj);
+            _obj_left--;
+            return ret;
+        }
+
+        _obj_num *= 2;
+        _obj_left = _obj_num - 1;
+        _current_mem = (char*)new Block(_obj_num);
+
+        if (_head == nullptr)
+        {
+            _head = (Block*)_current_mem;
+            _tail = (Block*)_current_mem;
         }
         else
         {
-            reinterpret_cast<MemoryBlock*>(newBlock)->_next = _memory_block->_head;
-            _memory_block->_head = reinterpret_cast<MemoryBlock*>(newBlock);
+            _tail->_next = (Block*)_current_mem;
+            _tail = (Block*)_current_mem;
         }
 
-        //让空闲结点指向可用内存块
-        _free_node = reinterpret_cast<FreeNode*>(newBlock + sizeof(MemoryBlock));
-        char* cur = reinterpret_cast<char*>(_free_node);
-        FreeNode* prev = _free_node;
-
-        //让剩下的可用空间全部作为FreeNode结点并连起来
-        for (int i = 2; BlockSize - sizeof(MemoryBlock) - (sizeof(FreeNode) * i) > sizeof(FreeNode); i++)
-        {
-            cur = cur + sizeof(FreeNode);
-            prev->_next = reinterpret_cast<FreeNode*>(cur);
-            prev = reinterpret_cast<FreeNode*>(cur);
-        }
+        T* ret = (T*)_current_mem;
+        _current_mem += sizeof(Obj);
+        return ret;
     }
 
-    T* allocate(size_type n = 1)
+    void Delete(T* memory)
     {
-        if (_free_node == nullptr) //如果没有空闲结点了，就在申请一个内存块
-        {
-            CreateBlock();
-        }
-        T* res = reinterpret_cast<T*>(_free_node);
-        _free_node = _free_node->_next;
-        
-        return res;
+        reinterpret_cast<Obj*>(memory)->_next = _free_list;
+        _free_list = reinterpret_cast<Obj*>(memory);
     }
-
-    void deallocate(T* p, size_type n = 1)
-    {
-        if (p != nullptr)
-        {
-            reinterpret_cast<FreeNode*>(p)->_next = _free_node;
-            _free_node = reinterpret_cast<FreeNode*>(p);
-        }
-    }
-
 
 private:
-    struct FreeNode
+    void Destory()
     {
-        T _data;
-        FreeNode* _next;
+        while (_head != _tail->_next)
+        {
+            delete (char*)_head;
+            _head = _head->_next;
+        }
+
+        _head = nullptr;
+        _tail = nullptr;
+    }
+
+private:
+    union Obj
+    {
+        T _obj;
+        Obj* _next;
     };
 
-    struct MemoryBlock
-    {
-        MemoryBlock* _head;
-        MemoryBlock* _next;
-    };
-
-    typedef struct FreeNode FreeNode;
-    typedef struct MemoryBlock MemoryBlock;
-
-    FreeNode *_free_node;
-    MemoryBlock *_memory_block;
+    size_t _obj_num = 32;
+    int _obj_left = 32;
+    Obj* _free_list = nullptr;
+    Block* _head = nullptr;
+    Block* _tail = nullptr;
+    char* _current_mem = nullptr;
 };
+
