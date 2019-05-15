@@ -3,21 +3,28 @@
 
 int main()
 {
-    //MemoryPool<int> a;
-    //int *p = a.New();
-    //*p = 1;
-    //a.Delete(p);
-    
+    char arr[1000000];
+
     int start = clock();
-    MemoryPool<int> a;
-    for (int i = 0; i < 1000; i++)
+    ObjectPool<char> a;
+    for (int i = 0; i < 1000000; i++)
     {
-        int *p = a.New();
+        char *p = a.New();
         *p = i;
+        arr[i] = *p;
     }
     int end = clock();
-    std::cout << "use time : " << (end - start) / CLOCKS_PER_SEC << std::endl;
+    std::cout << "use time : " << (end - start) << std::endl;
 
+    char arr1[1000000];
+    start = clock();
+    for (int i = 0; i < 1000000; i++)
+    {
+        char *p = new char(i);
+        arr1[i] = *p;
+    }
+    end = clock();
+    std::cout << "use time : " << (end - start) << std::endl;
 
     return 0;
 }
